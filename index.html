@@ -1,9 +1,46 @@
-<script type="module">
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>양지파인리조트 스마트 시설관리 대시보드</title>
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+    <style>
+        body { font-family: 'Arial', sans-serif; margin: 20px; background-color: #f4f7f6; }
+        #calendar { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; }
+        .toolbar { text-align: center; margin-bottom: 20px; }
+        .btn { padding: 10px 15px; margin: 0 5px; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .btn-upload { background-color: #28a745; }
+        .btn-download { background-color: #17a2b8; }
+        .btn-print { background-color: #6c757d; }
+        
+        /* 🖨️ 인쇄할 때 버튼들은 안 보이게 숨겨주는 천재적인 CSS */
+        @media print {
+            .toolbar { display: none; }
+            body { background-color: white; margin: 0; }
+            #calendar { box-shadow: none; width: 100%; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>🏢 양지파인리조트 연간 시설관리 대시보드</h1>
+    
+    <!-- 🎛️ 상단 조종 장치 (업로드 / 다운로드 / 인쇄) -->
+    <div class="toolbar">
+        <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
+        <button class="btn btn-upload" id="uploadBtn">📂 엑셀 대량 업로드</button>
+        <button class="btn btn-download" id="downloadBtn">💾 엑셀 다운로드 (백업)</button>
+        <button class="btn btn-print" onclick="window.print()">🖨️ 캘린더 인쇄하기</button>
+    </div>
+
+    <div id='calendar'></div>
+
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
+    <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        // 💡 updateDoc 기능이 추가되었습니다.
         import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
-        // 황박사님의 프로젝트 마스터 키
+        // 황박사님의 Firebase 마스터 키
         const firebaseConfig = {
             apiKey: "AIzaSyAya2NJtmNLJtiP7XMOdj7o1wkusf7n3fY",
             authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
@@ -18,122 +55,136 @@
         document.addEventListener('DOMContentLoaded', async function() {
             var calendarEl = document.getElementById('calendar');
             
-            const tasksCol = collection(db, 'tasks');
-            const taskSnapshot = await getDocs(tasksCol);
-            const eventsData = taskSnapshot.docs.map(doc => {
-                let data = doc.data();
-                return {
-                    id: doc.id,
-                    title: data.title,
-                    start: data.date,
-                    color: data.color,
-                    extendedProps: { cycle: data.cycle, rawName: data.rawName, manager: data.manager }
-                };
-            });
+            try {
+                // 1. 데이터 불러오기
+                const tasksCol = collection(db, 'tasks');
+                const taskSnapshot = await getDocs(tasksCol);
+                const eventsData = taskSnapshot.docs.map(doc => {
+                    let data = doc.data();
+                    return {
+                        id: doc.id,
+                        title: data.title,
+                        start: data.date,
+                        color: data.color,
+                        extendedProps: { cycle: data.cycle, rawName: data.rawName, manager: data.manager }
+                    };
+                });
 
-            var calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
-                headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridYear,dayGridMonth' },
-                events: eventsData,
-                editable: true, // 💡 마우스로 일정 끌어다 놓기(드래그) 허용!
-
-                // 🌟 기능 1: 달력의 빈 날짜를 클릭했을 때 (신규 등록)
-                dateClick: async function(info) {
-                    const dateStr = info.dateStr;
-                    const taskName = prompt(`[${dateStr}] 추가할 점검/업무명을 입력하세요:`);
-                    if (!taskName) return;
-
-                    const cycle = prompt("몇 개월 주기로 반복하시겠습니까? (예: 12, 반복 없으면 0)", "12");
-                    if (cycle === null) return;
-
-                    // 기본 담당자 이름을 황박사로 띄워줍니다.
-                    const manager = prompt("작성자(담당자) 이름을 입력하세요:", "jude");
-                    if (!manager) return;
-
-                    // 클릭한 날짜가 오늘보다 과거인지 미래인지 판단
-                    const isPast = new Date(dateStr) < new Date();
-                    const statusStr = isPast ? "✅ [완료]" : "🚨 [예정]";
-                    const colorStr = isPast ? "#a0a0a0" : "#d9534f";
-                    const docPrefix = isPast ? "done" : "todo";
-
-                    const docId = `${docPrefix}_${taskName}_${dateStr}`;
+                // 2. 캘린더 화면 그리기
+                var calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'dayGridMonth',
+                    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridYear,dayGridMonth' },
+                    events: eventsData,
+                    editable: true,
                     
-                    // 1. 클릭한 날짜에 일정 저장 (담당자 이름 포함)
-                    await setDoc(doc(db, "tasks", docId), {
-                        title: `${statusStr} ${taskName} (${manager})`,
-                        date: dateStr,
-                        color: colorStr,
-                        cycle: parseInt(cycle) || 0,
-                        rawName: taskName,
-                        manager: manager
-                    });
+                    // 빈 날짜 클릭 시 입력
+                    dateClick: async function(info) {
+                        const dateStr = info.dateStr;
+                        const taskName = prompt(`[${dateStr}] 추가할 점검명을 입력하세요:`);
+                        if (!taskName) return;
+                        const cycle = prompt("몇 개월 주기로 반복합니까? (반복 없으면 0)", "12");
+                        if (cycle === null) return;
+                        const manager = prompt("작성자 닉네임:", "황박사");
+                        if (!manager) return;
 
-                    // 2. 과거 완료된 일이고 주기가 있다면 -> 내년 예정일 자동 세팅!
-                    if (isPast && parseInt(cycle) > 0) {
-                        let nextDateObj = new Date(dateStr);
-                        nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(cycle));
-                        const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                        const isPast = new Date(dateStr) < new Date();
+                        const docPrefix = isPast ? "done" : "todo";
+                        const docId = `${docPrefix}_${taskName}_${dateStr}`;
                         
-                        await setDoc(doc(db, "tasks", `todo_${taskName}_${nextDateStr}`), {
-                            title: `🚨 [예정] ${taskName} (정기) (${manager})`,
-                            date: nextDateStr,
-                            color: '#d9534f',
-                            cycle: parseInt(cycle),
-                            rawName: taskName,
-                            manager: manager
+                        await setDoc(doc(db, "tasks", docId), {
+                            title: isPast ? `✅ [완료] ${taskName} (${manager})` : `🚨 [예정] ${taskName} (${manager})`,
+                            date: dateStr, color: isPast ? "#a0a0a0" : "#d9534f", cycle: parseInt(cycle) || 0, rawName: taskName, manager: manager
                         });
-                    }
-                    location.reload(); // 화면 새로고침
-                },
 
-                // 🌟 기능 2: 일정을 마우스로 끌어서 다른 날짜로 옮길 때 (일정 변경)
-                eventDrop: async function(info) {
-                    const eventId = info.event.id;
-                    const newDateStr = info.event.startStr.split('T')[0];
-                    const isConfirm = confirm(`일정을 ${newDateStr}로 미루거나 변경하시겠습니까?`);
-
-                    if (isConfirm) {
-                        await updateDoc(doc(db, "tasks", eventId), { date: newDateStr });
-                    } else {
-                        info.revert(); // 취소하면 원래 날짜로 쏙 돌아감
-                    }
-                },
-
-                // 🌟 기능 3: 만들어진 일정을 클릭했을 때 (완료 처리 및 삭제)
-                eventClick: async function(info) {
-                    const eventId = info.event.id;
-                    const title = info.event.title;
-                    const props = info.event.extendedProps;
-
-                    if (title.includes('예정')) {
-                        const isDone = confirm(`[${props.rawName}]\n이 업무를 오늘 완료하셨습니까?\n\n- 확인: 완료 처리 및 다음 주기 생성\n- 취소: 이 일정 삭제`);
-                        if (isDone) {
-                            const today = new Date().toISOString().split('T')[0];
-                            const actualDate = prompt("실제 점검 완료 날짜:", today);
-                            if (actualDate) {
-                                await deleteDoc(doc(db, "tasks", eventId));
-                                await setDoc(doc(db, "tasks", `done_${props.rawName}_${actualDate}`), {
-                                    title: `✅ [완료] ${props.rawName} (${props.manager})`, date: actualDate, color: '#a0a0a0', cycle: props.cycle, rawName: props.rawName, manager: props.manager
-                                });
-                                
-                                if(props.cycle > 0) {
-                                    let nextDateObj = new Date(actualDate);
-                                    nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(props.cycle));
-                                    const nextDateStr = nextDateObj.toISOString().split('T')[0];
-                                    await setDoc(doc(db, "tasks", `todo_${props.rawName}_${nextDateStr}`), {
-                                        title: `🚨 [예정] ${props.rawName} (정기) (${props.manager})`, date: nextDateStr, color: '#d9534f', cycle: props.cycle, rawName: props.rawName, manager: props.manager
-                                    });
-                                }
-                                location.reload();
-                            }
-                        } else {
-                            if(confirm("일정을 완전히 삭제하시겠습니까?")) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                        if (isPast && parseInt(cycle) > 0) {
+                            let nextDate = new Date(dateStr);
+                            nextDate.setMonth(nextDate.getMonth() + parseInt(cycle));
+                            const nextDateStr = nextDate.toISOString().split('T')[0];
+                            await setDoc(doc(db, "tasks", `todo_${taskName}_${nextDateStr}`), {
+                                title: `🚨 [예정] ${taskName} (정기) (${manager})`, date: nextDateStr, color: '#d9534f', cycle: parseInt(cycle), rawName: taskName, manager: manager
+                            });
                         }
-                    } else {
-                        if(confirm(`'${title}' 기록을 삭제하시겠습니까?`)) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                        location.reload();
+                    },
+
+                    // 마우스 드래그로 날짜 변경
+                    eventDrop: async function(info) {
+                        if (confirm(`일정을 ${info.event.startStr.split('T')[0]}로 옮기시겠습니까?`)) {
+                            await updateDoc(doc(db, "tasks", info.event.id), { date: info.event.startStr.split('T')[0] });
+                        } else { info.revert(); }
+                    },
+
+                    // 일정 클릭 시 완료/삭제
+                    eventClick: async function(info) {
+                        const p = info.event.extendedProps;
+                        if (info.event.title.includes('예정')) {
+                            if (confirm(`'${p.rawName}' 점검을 완료하셨습니까?\n확인을 누르면 '완료' 처리 및 다음 일정이 생성됩니다.`)) {
+                                const actualDate = prompt("실제 점검 완료 날짜:", new Date().toISOString().split('T')[0]);
+                                if (actualDate) {
+                                    await deleteDoc(doc(db, "tasks", info.event.id));
+                                    await setDoc(doc(db, "tasks", `done_${p.rawName}_${actualDate}`), { title: `✅ [완료] ${p.rawName} (${p.manager})`, date: actualDate, color: '#a0a0a0', cycle: p.cycle, rawName: p.rawName, manager: p.manager });
+                                    if(p.cycle > 0) {
+                                        let next = new Date(actualDate); next.setMonth(next.getMonth() + parseInt(p.cycle));
+                                        const nextStr = next.toISOString().split('T')[0];
+                                        await setDoc(doc(db, "tasks", `todo_${p.rawName}_${nextStr}`), { title: `🚨 [예정] ${p.rawName} (${p.manager})`, date: nextStr, color: '#d9534f', cycle: p.cycle, rawName: p.rawName, manager: p.manager });
+                                    }
+                                    location.reload();
+                                }
+                            } else { if(confirm("이 일정을 영구 삭제하시겠습니까?")) { await deleteDoc(doc(db, "tasks", info.event.id)); location.reload(); } }
+                        } else {
+                            if(confirm("기록을 삭제하시겠습니까?")) { await deleteDoc(doc(db, "tasks", info.event.id)); location.reload(); }
+                        }
                     }
-                }
-            });
-            calendar.render();
+                });
+                calendar.render();
+
+                // 💾 3. 엑셀 다운로드 (백업) 기능
+                document.getElementById('downloadBtn').addEventListener('click', function() {
+                    let csv = "\uFEFF점검명,날짜,주기(개월),담당자\n"; // 한글 안 깨지게 UTF-8 BOM 추가
+                    eventsData.forEach(e => { csv += `${e.extendedProps.rawName},${e.start},${e.extendedProps.cycle},${e.extendedProps.manager}\n`; });
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = "양지파인리조트_일정백업.csv";
+                    link.click();
+                });
+
+                // 📂 4. 엑셀 대량 업로드 기능 (파이썬 타임머신을 브라우저에 이식!)
+                document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('csvFileInput').click());
+                document.getElementById('csvFileInput').addEventListener('change', async function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async function(event) {
+                        const rows = event.target.result.split('\n');
+                        for (let i = 1; i < rows.length; i++) {
+                            const cols = rows[i].split(',');
+                            if (cols.length < 3 || !cols[0].trim()) continue;
+                            const taskName = cols[0].trim(); const dateStr = cols[1].trim(); 
+                            const cycle = parseInt(cols[2]) || 0; const manager = cols[3] ? cols[3].trim() : '황박사';
+                            
+                            const isPast = new Date(dateStr) < new Date();
+                            await setDoc(doc(db, "tasks", `${isPast ? 'done' : 'todo'}_${taskName}_${dateStr}`), {
+                                title: isPast ? `✅ [완료] ${taskName} (${manager})` : `🚨 [예정] ${taskName} (${manager})`,
+                                date: dateStr, color: isPast ? "#a0a0a0" : "#d9534f", cycle: cycle, rawName: taskName, manager: manager
+                            });
+                            
+                            if (isPast && cycle > 0) {
+                                let n = new Date(dateStr); n.setMonth(n.getMonth() + cycle); const nStr = n.toISOString().split('T')[0];
+                                await setDoc(doc(db, "tasks", `todo_${taskName}_${nStr}`), { title: `🚨 [예정] ${taskName} (정기) (${manager})`, date: nStr, color: '#d9534f', cycle: cycle, rawName: taskName, manager: manager });
+                            }
+                        }
+                        alert("대량 업로드가 완료되었습니다!");
+                        location.reload();
+                    };
+                    reader.readAsText(file, 'utf-8'); // 파일 읽기
+                });
+
+            } catch (error) {
+                console.error("데이터 로딩 중 에러 발생:", error);
+                alert("데이터베이스 연결에 문제가 발생했습니다. 관리자 모드(F12)를 확인해 주세요.");
+            }
         });
     </script>
+</body>
+</html>
