@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>양지파인리조트 스마트 시설관리 대시보드</title>
+    <!-- FullCalendar CSS -->
+    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
+    <style>
+        body { font-family: 'Arial', sans-serif; margin: 40px; background-color: #f4f7f6; }
+        #calendar { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; }
+        .fc-toolbar-title { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>🏢 양지파인리조트 연간 시설관리 대시보드</h1>
+    <p style="text-align: center; color: #666;">연간 법정점검 및 주간 업무 현황</p>
+    <div id='calendar'></div>
+
+    <!-- FullCalendar Script -->
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
+    <script type="module">
+        // Firebase 설정 (pine-map, yustel-manager 등에 사용하신 방식과 동일하게 셋팅하시면 됩니다)
+        // import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        // import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        
+        // const firebaseConfig = { /* Firebase Config 입력 */ };
+        // const app = initializeApp(firebaseConfig);
+        // const db = getFirestore(app);
+
+        document.addEventListener('DOMContentLoaded', function() {
+            var calendarEl = document.getElementById('calendar');
+            var calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridYear,dayGridMonth,timeGridWeek' // 연간/월간/주간 뷰
+                },
+                buttonText: {
+                    year: '연간',
+                    month: '월간',
+                    week: '주간',
+                    today: '오늘'
+                },
+                events: [
+                    // Firestore 연동 전 시각화 테스트용 임시 데이터
+                    { title: '✅ [완료] 공조냉동기계 점검', start: '2026-02-11', color: '#a0a0a0' },
+                    { title: '🚨 [예정] 소방설비 점검', start: '2026-08-20', color: '#d9534f' },
+                    { title: '🚨 [예정] 전기설비 점검', start: '2026-11-15', color: '#d9534f' }
+                ]
+            });
+            calendar.render();
+        });
+    </script>
+</body>
+</html>
