@@ -19,36 +19,48 @@
 
     <!-- FullCalendar Script -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
-    <script type="module">
-        // Firebase 설정 (pine-map, yustel-manager 등에 사용하신 방식과 동일하게 셋팅하시면 됩니다)
-        // import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        // import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+   <script type="module">
+        // 1. Firebase 라이브러리 불러오기
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
-        // const firebaseConfig = { /* Firebase Config 입력 */ };
-        // const app = initializeApp(firebaseConfig);
-        // const db = getFirestore(app);
+        // 2. 황박사님의 프로젝트 인증 정보 (마스터 키)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAya2NJtmNLJtiP7XMOdj7o1wkusf7n3fY",
+            authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
+            projectId: "smart-facility-dashboard-52577",
+            storageBucket: "smart-facility-dashboard-52577.firebasestorage.app",
+            messagingSenderId: "934422884508",
+            appId: "1:934422884508:web:ac19e9a72afa1374e6bd59"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             var calendarEl = document.getElementById('calendar');
+            
+            // 3. Firebase에서 실시간 데이터 읽어오기
+            const tasksCol = collection(db, 'tasks');
+            const taskSnapshot = await getDocs(tasksCol);
+            const eventsData = taskSnapshot.docs.map(doc => {
+                let data = doc.data();
+                return {
+                    title: data.title,
+                    start: data.date,
+                    color: data.color
+                };
+            });
+
+            // 4. FullCalendar에 데이터 그리기
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
-                    right: 'dayGridYear,dayGridMonth,timeGridWeek' // 연간/월간/주간 뷰
+                    right: 'dayGridYear,dayGridMonth,timeGridWeek'
                 },
-                buttonText: {
-                    year: '연간',
-                    month: '월간',
-                    week: '주간',
-                    today: '오늘'
-                },
-                events: [
-                    // Firestore 연동 전 시각화 테스트용 임시 데이터
-                    { title: '✅ [완료] 공조냉동기계 점검', start: '2026-02-11', color: '#a0a0a0' },
-                    { title: '🚨 [예정] 소방설비 점검', start: '2026-08-20', color: '#d9534f' },
-                    { title: '🚨 [예정] 전기설비 점검', start: '2026-11-15', color: '#d9534f' }
-                ]
+                buttonText: { year: '연간', month: '월간', week: '주간', today: '오늘' },
+                events: eventsData
             });
             calendar.render();
         });
