@@ -1,30 +1,9 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <title>양지파인리조트 스마트 시설관리 대시보드</title>
-    <!-- FullCalendar CSS -->
-    <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
-    <style>
-        body { font-family: 'Arial', sans-serif; margin: 40px; background-color: #f4f7f6; }
-        #calendar { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #2c3e50; }
-        .fc-toolbar-title { font-weight: bold; }
-    </style>
-</head>
-<body>
-    <h1>🏢 양지파인리조트 연간 시설관리 대시보드</h1>
-    <p style="text-align: center; color: #666;">연간 법정점검 및 주간 업무 현황</p>
-    <div id='calendar'></div>
-
-    <!-- FullCalendar Script -->
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
-  <script type="module">
-        // 1. 수정/삭제 기능을 위한 라이브러리 추가
+<script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        // 💡 updateDoc 기능이 추가되었습니다.
+        import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
-        // 2. 황박사님의 프로젝트 인증 정보 (그대로 유지)
+        // 황박사님의 프로젝트 마스터 키
         const firebaseConfig = {
             apiKey: "AIzaSyAya2NJtmNLJtiP7XMOdj7o1wkusf7n3fY",
             authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
@@ -39,76 +18,122 @@
         document.addEventListener('DOMContentLoaded', async function() {
             var calendarEl = document.getElementById('calendar');
             
-            // 3. 데이터 가져오기
             const tasksCol = collection(db, 'tasks');
             const taskSnapshot = await getDocs(tasksCol);
             const eventsData = taskSnapshot.docs.map(doc => {
                 let data = doc.data();
                 return {
-                    id: doc.id, // 클릭 시 삭제를 위해 ID 저장
+                    id: doc.id,
                     title: data.title,
                     start: data.date,
                     color: data.color,
-                    extendedProps: { cycle: data.cycle, rawName: data.rawName }
+                    extendedProps: { cycle: data.cycle, rawName: data.rawName, manager: data.manager }
                 };
             });
 
-            // 4. 천재적인 클릭 이벤트가 추가된 달력
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridYear,dayGridMonth' },
                 events: eventsData,
-                
-                // 💡 일정을 클릭했을 때 실행되는 마법!
+                editable: true, // 💡 마우스로 일정 끌어다 놓기(드래그) 허용!
+
+                // 🌟 기능 1: 달력의 빈 날짜를 클릭했을 때 (신규 등록)
+                dateClick: async function(info) {
+                    const dateStr = info.dateStr;
+                    const taskName = prompt(`[${dateStr}] 추가할 점검/업무명을 입력하세요:`);
+                    if (!taskName) return;
+
+                    const cycle = prompt("몇 개월 주기로 반복하시겠습니까? (예: 12, 반복 없으면 0)", "12");
+                    if (cycle === null) return;
+
+                    // 기본 담당자 이름을 황박사로 띄워줍니다.
+                    const manager = prompt("작성자(담당자) 이름을 입력하세요:", "황박사");
+                    if (!manager) return;
+
+                    // 클릭한 날짜가 오늘보다 과거인지 미래인지 판단
+                    const isPast = new Date(dateStr) < new Date();
+                    const statusStr = isPast ? "✅ [완료]" : "🚨 [예정]";
+                    const colorStr = isPast ? "#a0a0a0" : "#d9534f";
+                    const docPrefix = isPast ? "done" : "todo";
+
+                    const docId = `${docPrefix}_${taskName}_${dateStr}`;
+                    
+                    // 1. 클릭한 날짜에 일정 저장 (담당자 이름 포함)
+                    await setDoc(doc(db, "tasks", docId), {
+                        title: `${statusStr} ${taskName} (${manager})`,
+                        date: dateStr,
+                        color: colorStr,
+                        cycle: parseInt(cycle) || 0,
+                        rawName: taskName,
+                        manager: manager
+                    });
+
+                    // 2. 과거 완료된 일이고 주기가 있다면 -> 내년 예정일 자동 세팅!
+                    if (isPast && parseInt(cycle) > 0) {
+                        let nextDateObj = new Date(dateStr);
+                        nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(cycle));
+                        const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                        
+                        await setDoc(doc(db, "tasks", `todo_${taskName}_${nextDateStr}`), {
+                            title: `🚨 [예정] ${taskName} (정기) (${manager})`,
+                            date: nextDateStr,
+                            color: '#d9534f',
+                            cycle: parseInt(cycle),
+                            rawName: taskName,
+                            manager: manager
+                        });
+                    }
+                    location.reload(); // 화면 새로고침
+                },
+
+                // 🌟 기능 2: 일정을 마우스로 끌어서 다른 날짜로 옮길 때 (일정 변경)
+                eventDrop: async function(info) {
+                    const eventId = info.event.id;
+                    const newDateStr = info.event.startStr.split('T')[0];
+                    const isConfirm = confirm(`일정을 ${newDateStr}로 미루거나 변경하시겠습니까?`);
+
+                    if (isConfirm) {
+                        await updateDoc(doc(db, "tasks", eventId), { date: newDateStr });
+                    } else {
+                        info.revert(); // 취소하면 원래 날짜로 쏙 돌아감
+                    }
+                },
+
+                // 🌟 기능 3: 만들어진 일정을 클릭했을 때 (완료 처리 및 삭제)
                 eventClick: async function(info) {
                     const eventId = info.event.id;
                     const title = info.event.title;
                     const props = info.event.extendedProps;
 
                     if (title.includes('예정')) {
-                        // 예정된 일정 처리
-                        const isDone = confirm(`[${props.rawName}]\n이 일정을 오늘 점검 완료하셨습니까?\n\n- 확인: 실제 날짜로 '완료' 처리 및 내년 일정 생성\n- 취소: 이 일정 단순 삭제`);
-                        
+                        const isDone = confirm(`[${props.rawName}]\n이 업무를 오늘 완료하셨습니까?\n\n- 확인: 완료 처리 및 다음 주기 생성\n- 취소: 이 일정 삭제`);
                         if (isDone) {
-                            // 오늘 날짜를 기본값으로 띄워줌 (수정 가능)
                             const today = new Date().toISOString().split('T')[0];
-                            const actualDate = prompt("실제 점검을 완료한 날짜를 적어주세요 (예: 2026-09-18):", today);
-                            
+                            const actualDate = prompt("실제 점검 완료 날짜:", today);
                             if (actualDate) {
-                                // 1. 기존 '예정' 삭제
                                 await deleteDoc(doc(db, "tasks", eventId));
-                                
-                                // 2. 실제 날짜로 '완료' 기록 생성
                                 await setDoc(doc(db, "tasks", `done_${props.rawName}_${actualDate}`), {
-                                    title: `✅ [완료] ${props.rawName}`, date: actualDate, color: '#a0a0a0', cycle: props.cycle, rawName: props.rawName
+                                    title: `✅ [완료] ${props.rawName} (${props.manager})`, date: actualDate, color: '#a0a0a0', cycle: props.cycle, rawName: props.rawName, manager: props.manager
                                 });
                                 
-                                // 3. 그로부터 내년 '예정' 일정 새로 생성
-                                let nextDateObj = new Date(actualDate);
-                                nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(props.cycle));
-                                const nextDateStr = nextDateObj.toISOString().split('T')[0];
-                                
-                                await setDoc(doc(db, "tasks", `todo_${props.rawName}_${nextDateStr}`), {
-                                    title: `🚨 [예정] ${props.rawName} (정기)`, date: nextDateStr, color: '#d9534f', cycle: props.cycle, rawName: props.rawName
-                                });
-                                
-                                alert("성공적으로 점검이 완료 처리되었으며, 다음 일정이 생성되었습니다!");
-                                location.reload(); // 새로고침
+                                if(props.cycle > 0) {
+                                    let nextDateObj = new Date(actualDate);
+                                    nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(props.cycle));
+                                    const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                                    await setDoc(doc(db, "tasks", `todo_${props.rawName}_${nextDateStr}`), {
+                                        title: `🚨 [예정] ${props.rawName} (정기) (${props.manager})`, date: nextDateStr, color: '#d9534f', cycle: props.cycle, rawName: props.rawName, manager: props.manager
+                                    });
+                                }
+                                location.reload();
                             }
                         } else {
-                            // 단순 삭제
-                            const del = confirm("이 일정을 아예 삭제하시겠습니까?");
-                            if(del) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                            if(confirm("일정을 완전히 삭제하시겠습니까?")) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
                         }
                     } else {
-                        // 이미 완료된 일정 처리
-                        const del = confirm(`'${title}' 기록을 삭제하시겠습니까?`);
-                        if(del) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                        if(confirm(`'${title}' 기록을 삭제하시겠습니까?`)) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
                     }
                 }
             });
             calendar.render();
         });
     </script>
-</body>
-</html>
