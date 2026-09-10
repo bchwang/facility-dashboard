@@ -19,12 +19,12 @@
 
     <!-- FullCalendar Script -->
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
-   <script type="module">
-        // 1. Firebase 라이브러리 불러오기
+  <script type="module">
+        // 1. 수정/삭제 기능을 위한 라이브러리 추가
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
-        // 2. 황박사님의 프로젝트 인증 정보 (마스터 키)
+        // 2. 황박사님의 프로젝트 인증 정보 (그대로 유지)
         const firebaseConfig = {
             apiKey: "AIzaSyAya2NJtmNLJtiP7XMOdj7o1wkusf7n3fY",
             authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
@@ -39,28 +39,73 @@
         document.addEventListener('DOMContentLoaded', async function() {
             var calendarEl = document.getElementById('calendar');
             
-            // 3. Firebase에서 실시간 데이터 읽어오기
+            // 3. 데이터 가져오기
             const tasksCol = collection(db, 'tasks');
             const taskSnapshot = await getDocs(tasksCol);
             const eventsData = taskSnapshot.docs.map(doc => {
                 let data = doc.data();
                 return {
+                    id: doc.id, // 클릭 시 삭제를 위해 ID 저장
                     title: data.title,
                     start: data.date,
-                    color: data.color
+                    color: data.color,
+                    extendedProps: { cycle: data.cycle, rawName: data.rawName }
                 };
             });
 
-            // 4. FullCalendar에 데이터 그리기
+            // 4. 천재적인 클릭 이벤트가 추가된 달력
             var calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridYear,dayGridMonth,timeGridWeek'
-                },
-                buttonText: { year: '연간', month: '월간', week: '주간', today: '오늘' },
-                events: eventsData
+                headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridYear,dayGridMonth' },
+                events: eventsData,
+                
+                // 💡 일정을 클릭했을 때 실행되는 마법!
+                eventClick: async function(info) {
+                    const eventId = info.event.id;
+                    const title = info.event.title;
+                    const props = info.event.extendedProps;
+
+                    if (title.includes('예정')) {
+                        // 예정된 일정 처리
+                        const isDone = confirm(`[${props.rawName}]\n이 일정을 오늘 점검 완료하셨습니까?\n\n- 확인: 실제 날짜로 '완료' 처리 및 내년 일정 생성\n- 취소: 이 일정 단순 삭제`);
+                        
+                        if (isDone) {
+                            // 오늘 날짜를 기본값으로 띄워줌 (수정 가능)
+                            const today = new Date().toISOString().split('T')[0];
+                            const actualDate = prompt("실제 점검을 완료한 날짜를 적어주세요 (예: 2026-09-18):", today);
+                            
+                            if (actualDate) {
+                                // 1. 기존 '예정' 삭제
+                                await deleteDoc(doc(db, "tasks", eventId));
+                                
+                                // 2. 실제 날짜로 '완료' 기록 생성
+                                await setDoc(doc(db, "tasks", `done_${props.rawName}_${actualDate}`), {
+                                    title: `✅ [완료] ${props.rawName}`, date: actualDate, color: '#a0a0a0', cycle: props.cycle, rawName: props.rawName
+                                });
+                                
+                                // 3. 그로부터 내년 '예정' 일정 새로 생성
+                                let nextDateObj = new Date(actualDate);
+                                nextDateObj.setMonth(nextDateObj.getMonth() + parseInt(props.cycle));
+                                const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                                
+                                await setDoc(doc(db, "tasks", `todo_${props.rawName}_${nextDateStr}`), {
+                                    title: `🚨 [예정] ${props.rawName} (정기)`, date: nextDateStr, color: '#d9534f', cycle: props.cycle, rawName: props.rawName
+                                });
+                                
+                                alert("성공적으로 점검이 완료 처리되었으며, 다음 일정이 생성되었습니다!");
+                                location.reload(); // 새로고침
+                            }
+                        } else {
+                            // 단순 삭제
+                            const del = confirm("이 일정을 아예 삭제하시겠습니까?");
+                            if(del) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                        }
+                    } else {
+                        // 이미 완료된 일정 처리
+                        const del = confirm(`'${title}' 기록을 삭제하시겠습니까?`);
+                        if(del) { await deleteDoc(doc(db, "tasks", eventId)); location.reload(); }
+                    }
+                }
             });
             calendar.render();
         });
