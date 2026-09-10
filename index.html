@@ -93,7 +93,7 @@
                                     <option value="보수">🛠️ 시설보수/수리 (주황)</option>
                                     <option value="일반">📋 일반/임시점검 (파랑)</option>
                                 </select>` +
-                                `<input id="swal-cycle" type="number" class="swal2-input" placeholder="주기(개월) - 1회성이면 0 입력" value="12">` +
+                                `<input id="swal-cycle" type="number" min="0" class="swal2-input" placeholder="주기(개월) - 1회성이면 0 입력" value="12">` +
                                 `<input id="swal-manager" class="swal2-input" value="황박사" placeholder="담당자">`,
                             focusConfirm: false,
                             showCancelButton: true,
@@ -190,7 +190,7 @@
                                         <option value="일반" ${p.category==='일반'?'selected':''}>📋 일반/임시점검 (파랑)</option>
                                     </select>` +
                                     `<input id="swal-e-date" type="date" class="swal2-input" value="${info.event.startStr.split('T')[0]}">` +
-                                    `<input id="swal-e-cycle" type="number" class="swal2-input" value="${p.cycle}">` +
+                                    `<input id="swal-e-cycle" type="number" min="0" class="swal2-input" value="${p.cycle}">` +
                                     `<input id="swal-e-manager" class="swal2-input" value="${p.manager}">`,
                                 focusConfirm: false, showCancelButton: true, confirmButtonText: '저장',
                                 preConfirm: () => {
