@@ -77,15 +77,8 @@
         function calcNextDate(dateString, cycleMonths) {
             if (!cycleMonths || cycleMonths <= 0) return null;
             let [year, month, day] = dateString.split('-').map(Number);
-            
-            // 지정된 개월 수만큼 달을 더함
             let nextDate = new Date(year, month - 1 + parseInt(cycleMonths), day);
-            
-            // 날짜가 넘어갔는지 확인 (예: 1월 31일 + 1개월 -> 3월 2/3일이 되는 현상 방지)
-            if (nextDate.getDate() !== day) {
-                nextDate.setDate(0); // 이전 달의 마지막 날(28일, 30일 등)로 자동 맞춤
-            }
-            
+            if (nextDate.getDate() !== day) { nextDate.setDate(0); }
             const y = nextDate.getFullYear();
             const m = String(nextDate.getMonth() + 1).padStart(2, '0');
             const d = String(nextDate.getDate()).padStart(2, '0');
@@ -145,7 +138,6 @@
                                 rawName: formValues.name, manager: formValues.manager, category: formValues.cat
                             });
 
-                            // 🌟 안전장치가 적용된 내년/다음달 일정 생성
                             if (isPast && parseInt(formValues.cycle) > 0) {
                                 const nextDateStr = calcNextDate(info.dateStr, formValues.cycle);
                                 await setDoc(doc(db, "tasks", `todo_${formValues.name}_${nextDateStr}`), {
@@ -153,8 +145,15 @@
                                     date: nextDateStr, color: catInfo.color, cycle: parseInt(formValues.cycle), 
                                     rawName: formValues.name, manager: formValues.manager, category: formValues.cat
                                 });
+                                Swal.fire('등록 완료', '실적이 저장되었으며 다음 예정일이 자동 생성되었습니다.', 'success').then(()=>location.reload());
+                            } else {
+                                // 💡 미래 일정을 등록할 때 안심할 수 있도록 안내창 추가!
+                                Swal.fire({
+                                    title: '예정 일정 등록됨', 
+                                    text: '일단 예정일만 생성했습니다. 이 일정을 나중에 [✅ 완료 처리] 하시면 그 날짜를 기준으로 다음 주기가 완벽하게 뻗어나갑니다!', 
+                                    icon: 'info'
+                                }).then(()=>location.reload());
                             }
-                            location.reload();
                         }
                     },
 
@@ -196,7 +195,7 @@
                                         title: `${catInfo.icon} [예정] ${p.rawName} (${p.manager})`, date: nextStr, color: catInfo.color, cycle: p.cycle, rawName: p.rawName, manager: p.manager, category: p.category 
                                     });
                                 }
-                                Swal.fire('완료되었습니다!', '', 'success').then(() => location.reload());
+                                Swal.fire('완료되었습니다!', '다음 주기가 자동으로 생성되었습니다.', 'success').then(() => location.reload());
                             }
                         } 
                         // [일정 수정]
@@ -277,7 +276,6 @@
                             });
                             
                             if (isPast && cycle > 0) {
-                                // 🌟 엑셀 대량 업로드 시에도 안전장치 적용
                                 const nStr = calcNextDate(dateStr, cycle);
                                 await setDoc(doc(db, "tasks", `todo_${taskName}_${nStr}`), { title: `${catInfo.icon} [예정] ${taskName} (${manager})`, date: nStr, color: catInfo.color, cycle: cycle, rawName: taskName, manager: manager, category: category });
                             }
