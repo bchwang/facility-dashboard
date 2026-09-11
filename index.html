@@ -5,10 +5,10 @@
     <title>양지파인리조트 스마트 시설관리 대시보드</title>
     <!-- FullCalendar CSS -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
-    <!-- 💡 천재적인 팝업 UI를 위한 SweetAlert2 라이브러리 추가 -->
+    <!-- SweetAlert2 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        body { font-family: 'Arial', sans-serif; margin: 20px; background-color: #f4f7f6; }
+        body { font-family: 'Arial', sans-serif; margin: 20px; background-color: #f4f7f6; display: none; /* 💡 최초에는 화면을 숨김 (보안) */ }
         #calendar { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #2c3e50; }
         .toolbar { text-align: center; margin-bottom: 20px; }
@@ -22,8 +22,6 @@
             body { background-color: white; margin: 0; }
             #calendar { box-shadow: none; width: 100%; max-width: 100%; }
         }
-        
-        /* 팝업창 내부 간격 조정 */
         .swal2-input, .swal2-select { margin: 10px auto; width: 80%; }
     </style>
 </head>
@@ -41,6 +39,28 @@
 
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
     <script type="module">
+        // ==========================================
+        // 🔐 보안 설정 구역 (비밀번호)
+        // ==========================================
+        const ACCESS_PASSWORD = "8899"; // 원하는 비밀번호로 변경하세요
+        
+        // 1. 보안 체크 로직
+        const savedPw = localStorage.getItem('pine_dashboard_pw');
+        if (savedPw !== ACCESS_PASSWORD) {
+            const userInput = prompt("관리자 비밀번호를 입력하세요:");
+            if (userInput === ACCESS_PASSWORD) {
+                localStorage.setItem('pine_dashboard_pw', ACCESS_PASSWORD); // 암호 기억
+                document.body.style.display = 'block'; // 암호가 맞으면 화면 표시
+            } else {
+                alert("비밀번호가 틀렸습니다. 접근이 차단됩니다.");
+                // 틀리면 화면은 계속 숨겨진 상태(display: none)로 유지됨
+                throw new Error("보안 차단"); 
+            }
+        } else {
+            document.body.style.display = 'block'; // 이미 암호를 기억하고 있으면 바로 표시
+        }
+        // ==========================================
+
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
@@ -55,7 +75,6 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // 카테고리별 아이콘 및 색상 정의
         const CAT_CONFIG = {
             '법정': { icon: '🚨', color: '#d9534f' },
             '보수': { icon: '🛠️', color: '#fd7e14' },
@@ -82,7 +101,7 @@
                     events: eventsData,
                     editable: true,
                     
-                    // 🌟 1. 빈 날짜 클릭 시: 스마트 입력 팝업
+                    // 빈 날짜 클릭 시 (신규 입력)
                     dateClick: async function(info) {
                         const { value: formValues } = await Swal.fire({
                             title: `[${info.dateStr}] 신규 일정 등록`,
@@ -93,17 +112,13 @@
                                     <option value="보수">🛠️ 시설보수/수리 (주황)</option>
                                     <option value="일반">📋 일반/임시점검 (파랑)</option>
                                 </select>` +
-                                `<input id="swal-cycle" type="number" min="0" class="swal2-input" placeholder="주기(개월) - 1회성이면 0 입력" value="12">` +
+                                `<input id="swal-cycle" type="number" min="0" class="swal2-input" placeholder="주기(개월) - 1회성이면 0" value="12">` +
                                 `<input id="swal-manager" class="swal2-input" value="황박사" placeholder="담당자">`,
-                            focusConfirm: false,
-                            showCancelButton: true,
-                            confirmButtonText: '등록하기',
+                            focusConfirm: false, showCancelButton: true, confirmButtonText: '등록하기',
                             preConfirm: () => {
                                 return {
-                                    name: document.getElementById('swal-name').value,
-                                    cat: document.getElementById('swal-cat').value,
-                                    cycle: document.getElementById('swal-cycle').value || 0,
-                                    manager: document.getElementById('swal-manager').value
+                                    name: document.getElementById('swal-name').value, cat: document.getElementById('swal-cat').value,
+                                    cycle: document.getElementById('swal-cycle').value || 0, manager: document.getElementById('swal-manager').value
                                 }
                             }
                         });
@@ -124,8 +139,11 @@
                             });
 
                             if (isPast && parseInt(formValues.cycle) > 0) {
-                                let nextDate = new Date(info.dateStr); nextDate.setMonth(nextDate.getMonth() + parseInt(formValues.cycle));
+                                // 💡 정확한 주기 계산 로직 (1개월 등 완벽 지원)
+                                let nextDate = new Date(info.dateStr); 
+                                nextDate.setMonth(nextDate.getMonth() + parseInt(formValues.cycle));
                                 const nextDateStr = nextDate.toISOString().split('T')[0];
+                                
                                 await setDoc(doc(db, "tasks", `todo_${formValues.name}_${nextDateStr}`), {
                                     title: `${catInfo.icon} [예정] ${formValues.name} (${formValues.manager})`, 
                                     date: nextDateStr, color: catInfo.color, cycle: parseInt(formValues.cycle), 
@@ -136,7 +154,7 @@
                         }
                     },
 
-                    // 날짜 이동 드래그 앤 드롭
+                    // 마우스 드래그 이동 (날짜 변경 덮어쓰기)
                     eventDrop: async function(info) {
                         const newDate = info.event.startStr.split('T')[0];
                         const result = await Swal.fire({ title: '일정 변경', text: `${newDate}로 일정을 이동하시겠습니까?`, icon: 'question', showCancelButton: true });
@@ -144,22 +162,19 @@
                         else { info.revert(); }
                     },
 
-                    // 🌟 2. 일정 클릭 시: 만능 컨트롤 패널 (수정/완료/삭제)
+                    // 일정 클릭 시 팝업 제어
                     eventClick: async function(info) {
                         const p = info.event.extendedProps;
                         const isDone = info.event.title.includes('완료');
                         
-                        // 1차 팝업: 행동 선택
                         const action = await Swal.fire({
                             title: `'${p.rawName}'`, text: '무엇을 하시겠습니까?', icon: 'info',
                             showDenyButton: true, showCancelButton: true,
                             confirmButtonColor: '#28a745', denyButtonColor: '#007bff', cancelButtonColor: '#dc3545',
                             confirmButtonText: isDone ? '확인 (닫기)' : '✅ 완료 처리',
-                            denyButtonText: '✏️ 일정 수정',
-                            cancelButtonText: '🗑️ 영구 삭제'
+                            denyButtonText: '✏️ 일정 수정', cancelButtonText: '🗑️ 영구 삭제'
                         });
 
-                        // [완료 처리] 선택 시
                         if (action.isConfirmed && !isDone) {
                             const { value: actualDate } = await Swal.fire({ title: '실제 점검 완료일', input: 'date', inputValue: new Date().toISOString().split('T')[0] });
                             if (actualDate) {
@@ -178,7 +193,6 @@
                                 Swal.fire('완료되었습니다!', '', 'success').then(() => location.reload());
                             }
                         } 
-                        // [일정 수정] 선택 시
                         else if (action.isDenied) {
                             const { value: editValues } = await Swal.fire({
                                 title: '일정 수정',
@@ -202,7 +216,7 @@
                             });
 
                             if (editValues) {
-                                await deleteDoc(doc(db, "tasks", info.event.id)); // 기존 데이터 지우고
+                                await deleteDoc(doc(db, "tasks", info.event.id)); 
                                 const catInfo = CAT_CONFIG[editValues.cat];
                                 const finalColor = isDone ? "#a0a0a0" : catInfo.color;
                                 const finalIcon = isDone ? "✅ [완료]" : `${catInfo.icon} [예정]`;
@@ -216,7 +230,6 @@
                                 location.reload();
                             }
                         }
-                        // [영구 삭제] 선택 시
                         else if (action.dismiss === Swal.DismissReason.cancel) {
                             const delConfirm = await Swal.fire({ title: '정말 삭제하시겠습니까?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' });
                             if(delConfirm.isConfirmed) { await deleteDoc(doc(db, "tasks", info.event.id)); location.reload(); }
@@ -225,7 +238,6 @@
                 });
                 calendar.render();
 
-                // 엑셀 다운로드 (백업)
                 document.getElementById('downloadBtn').addEventListener('click', function() {
                     let csv = "\uFEFF점검명,분류,날짜,주기(개월),담당자\n";
                     eventsData.forEach(e => { csv += `${e.extendedProps.rawName},${e.extendedProps.category},${e.start},${e.extendedProps.cycle},${e.extendedProps.manager}\n`; });
@@ -234,10 +246,37 @@
                     link.download = "양지파인리조트_스마트일정.csv"; link.click();
                 });
 
-                // 대량 업로드 (기본 구조 유지)
                 document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('csvFileInput').click());
                 document.getElementById('csvFileInput').addEventListener('change', async function(e) {
-                    // ... 기존 업로드 로직 동일 ... (팝업창으로 인해 화면 코드가 너무 길어지므로 생략하지 않고 원본유지)
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async function(event) {
+                        const rows = event.target.result.split('\n');
+                        for (let i = 1; i < rows.length; i++) {
+                            const cols = rows[i].split(',');
+                            if (cols.length < 3 || !cols[0].trim()) continue;
+                            const taskName = cols[0].trim(); const dateStr = cols[2].trim(); 
+                            const cycle = parseInt(cols[3]) || 0; const manager = cols[4] ? cols[4].trim() : '황박사';
+                            const category = cols[1] ? cols[1].trim() : '법정';
+                            
+                            const isPast = new Date(dateStr) < new Date();
+                            const catInfo = CAT_CONFIG[category] || CAT_CONFIG['법정'];
+                            
+                            await setDoc(doc(db, "tasks", `${isPast ? 'done' : 'todo'}_${taskName}_${dateStr}`), {
+                                title: isPast ? `✅ [완료] ${taskName} (${manager})` : `${catInfo.icon} [예정] ${taskName} (${manager})`,
+                                date: dateStr, color: isPast ? "#a0a0a0" : catInfo.color, cycle: cycle, rawName: taskName, manager: manager, category: category
+                            });
+                            
+                            if (isPast && cycle > 0) {
+                                let n = new Date(dateStr); n.setMonth(n.getMonth() + cycle); const nStr = n.toISOString().split('T')[0];
+                                await setDoc(doc(db, "tasks", `todo_${taskName}_${nStr}`), { title: `${catInfo.icon} [예정] ${taskName} (정기) (${manager})`, date: nStr, color: catInfo.color, cycle: cycle, rawName: taskName, manager: manager, category: category });
+                            }
+                        }
+                        alert("대량 업로드가 완료되었습니다!");
+                        location.reload();
+                    };
+                    reader.readAsText(file, 'utf-8');
                 });
 
             } catch (error) { console.error(error); alert("데이터 로딩 에러"); }
