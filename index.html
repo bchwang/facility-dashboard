@@ -51,13 +51,13 @@
         import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
         
         const firebaseConfig = {
-            apiKey: "AIzaSyAya2NJtmNLJtiP7XMOdj7o1wkusf7n3fY",
-            authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
-            projectId: "smart-facility-dashboard-52577",
-            storageBucket: "smart-facility-dashboard-52577.firebasestorage.app",
-            messagingSenderId: "934422884508",
-            appId: "1:934422884508:web:ac19e9a72afa1374e6bd59"
-        };
+  apiKey: "AIzaSyAYa2NJtmNlJtiP7XMOdj7o1wkusf7n3fY",
+  authDomain: "smart-facility-dashboard-52577.firebaseapp.com",
+  projectId: "smart-facility-dashboard-52577",
+  storageBucket: "smart-facility-dashboard-52577.firebasestorage.app",
+  messagingSenderId: "934422884508",
+  appId: "1:934422884508:web:ac19e9a72afa1374e6bd59"
+};
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
         const auth = getAuth(app); // 인증 엔진 가동
