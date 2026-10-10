@@ -3,10 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>양지파인리조트 스마트 시설관리 대시보드</title>
+    <!-- FullCalendar & SweetAlert2 -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        body { font-family: 'Arial', sans-serif; margin: 20px; background-color: #f4f7f6; display: none; }
+        body { font-family: 'Arial', sans-serif; margin: 20px; background-color: #f4f7f6; }
+        /* 💡 로그인이 통과되기 전까지 대시보드 화면을 숨깁니다 */
+        #app-container { display: none; }
+        
         #calendar { max-width: 1100px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         h1 { text-align: center; color: #2c3e50; }
         .toolbar { text-align: center; margin-bottom: 20px; }
@@ -14,6 +18,7 @@
         .btn-upload { background-color: #28a745; }
         .btn-download { background-color: #17a2b8; }
         .btn-print { background-color: #6c757d; }
+        .btn-logout { background-color: #dc3545; float: right; }
         
         @media print {
             .toolbar { display: none; }
@@ -24,35 +29,81 @@
     </style>
 </head>
 <body>
-    <h1>🏢 양지파인리조트 연간 시설관리 대시보드</h1>
     
-    <div class="toolbar">
-        <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
-        <button class="btn btn-upload" id="uploadBtn">📂 엑셀 대량 업로드</button>
-        <button class="btn btn-download" id="downloadBtn">💾 엑셀 다운로드 (백업)</button>
-        <button class="btn btn-print" onclick="window.print()">🖨️ 캘린더 인쇄하기</button>
-    </div>
+    <!-- 💡 로그인 성공 시 보여질 전체 대시보드 영역 -->
+    <div id="app-container">
+        <h1>🏢 양지파인리조트 연간 시설관리 대시보드</h1>
+        
+        <div class="toolbar">
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;" />
+            <button class="btn btn-upload" id="uploadBtn">📂 엑셀 업로드</button>
+            <button class="btn btn-download" id="downloadBtn">💾 엑셀 백업</button>
+            <button class="btn btn-print" onclick="window.print()">🖨️ 인쇄하기</button>
+            <button class="btn btn-logout" id="logoutBtn">🔒 로그아웃</button>
+        </div>
 
-    <div id='calendar'></div>
+        <div id='calendar'></div>
+    </div>
 
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
     <script type="module">
-        // 🔐 보안 설정 구역 (비밀번호 8899)
-        const ACCESS_PASSWORD = "8899";
-        const savedPw = localStorage.getItem('pine_dashboard_pw');
-        if (savedPw !== ACCESS_PASSWORD) {
-            const userInput = prompt("관리자 비밀번호를 입력하세요:");
-            if (userInput === ACCESS_PASSWORD) {
-                localStorage.setItem('pine_dashboard_pw', ACCESS_PASSWORD); 
-                document.body.style.display = 'block'; 
-            } else {
-                alert("비밀번호가 틀렸습니다. 접근이 차단됩니다.");
-                throw new Error("보안 차단"); 
+        // ==========================================
+        // 🔐 천재적인 다중 사용자 로그인 시스템
+        // 원하시는 만큼 계정을 아래에 추가하거나 수정하세요!
+        // ==========================================
+        const USERS = {
+            'admin': { pw: '8899', name: '황박사' },   // 아이디: admin, 비번: 8899
+            'team1': { pw: '1234', name: '김팀장' },   // 아이디: team1, 비번: 1234
+            'staff': { pw: '5678', name: '이주임' }    // 아이디: staff, 비번: 5678
+        };
+
+        // 로그인 확인 함수
+        async function checkLogin() {
+            const savedId = localStorage.getItem('pine_id');
+            const savedPw = localStorage.getItem('pine_pw');
+            
+            // 이미 로그인되어 있고 정보가 맞다면 바로 통과!
+            if (savedId && savedPw && USERS[savedId] && USERS[savedId].pw === savedPw) {
+                return USERS[savedId].name; 
             }
-        } else {
-            document.body.style.display = 'block';
+
+            // 로그인이 안 되어 있다면 예쁜 팝업창 띄우기
+            while (true) {
+                const { value: formValues } = await Swal.fire({
+                    title: '양지파인리조트 시설관리',
+                    html:
+                        '<input id="swal-id" class="swal2-input" placeholder="아이디 입력">' +
+                        '<input id="swal-pw" type="password" class="swal2-input" placeholder="비밀번호 입력">',
+                    focusConfirm: false,
+                    allowOutsideClick: false, 
+                    allowEscapeKey: false,
+                    confirmButtonText: '로그인',
+                    preConfirm: () => {
+                        return {
+                            id: document.getElementById('swal-id').value.trim(),
+                            pw: document.getElementById('swal-pw').value.trim()
+                        }
+                    }
+                });
+
+                if (formValues) {
+                    const user = USERS[formValues.id];
+                    if (user && user.pw === formValues.pw) {
+                        // 로그인 성공 시 폰에 기억시킴
+                        localStorage.setItem('pine_id', formValues.id);
+                        localStorage.setItem('pine_pw', formValues.pw);
+                        await Swal.fire({ title: '로그인 성공', text: `${user.name}님 환영합니다!`, icon: 'success', timer: 1500, showConfirmButton: false });
+                        return user.name; // 접속한 사람의 이름 반환
+                    } else {
+                        await Swal.fire('로그인 실패', '아이디 또는 비밀번호가 틀렸습니다.', 'error');
+                    }
+                }
+            }
         }
 
+        // ==========================================
+        // 🚀 대시보드 메인 로직 시작
+        // ==========================================
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
@@ -73,7 +124,6 @@
             '일반': { icon: '📋', color: '#0275d8' }
         };
 
-        // 🌟 천재적인 날짜 계산 엔진 (말일 오류 완벽 방지)
         function calcNextDate(dateString, cycleMonths) {
             if (!cycleMonths || cycleMonths <= 0) return null;
             let [year, month, day] = dateString.split('-').map(Number);
@@ -86,6 +136,19 @@
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
+            // 1. 천재적인 로그인 체크 먼저 실행
+            const currentUser = await checkLogin();
+            
+            // 2. 로그인이 통과되면 하얗게 숨겨뒀던 화면을 짠! 하고 보여줌
+            document.getElementById('app-container').style.display = 'block';
+
+            // 3. 로그아웃 버튼 기능 연결
+            document.getElementById('logoutBtn').addEventListener('click', () => {
+                localStorage.removeItem('pine_id');
+                localStorage.removeItem('pine_pw');
+                location.reload();
+            });
+
             var calendarEl = document.getElementById('calendar');
             
             try {
@@ -108,7 +171,7 @@
                     // 신규 일정 등록
                     dateClick: async function(info) {
                         const { value: formValues } = await Swal.fire({
-                            title: `[${info.dateStr}] 신규 일정 등록`,
+                            title: `[${info.dateStr}] 신규 등록`,
                             html:
                                 `<input id="swal-name" class="swal2-input" placeholder="업무명 (예: 소독, 냉동기 점검)">` +
                                 `<select id="swal-cat" class="swal2-select">
@@ -116,9 +179,9 @@
                                     <option value="보수">🛠️ 시설보수/수리 (주황)</option>
                                     <option value="일반">📋 일반/임시점검 (파랑)</option>
                                 </select>` +
-                                `<input id="swal-cycle" type="number" min="0" class="swal2-input" placeholder="주기(개월) - 예: 매달은 1, 1년은 12" value="12">` +
-                                `<input id="swal-manager" class="swal2-input" value="황박사" placeholder="담당자">`,
-                            focusConfirm: false, showCancelButton: true, confirmButtonText: '등록하기',
+                                `<input id="swal-cycle" type="number" min="0" class="swal2-input" placeholder="주기(개월)" value="12">` +
+                                `<input id="swal-manager" class="swal2-input" value="${currentUser}" placeholder="담당자">`, // 💡 로그인한 사람 이름 자동 입력!
+                            focusConfirm: false, showCancelButton: true, confirmButtonText: '등록',
                             preConfirm: () => {
                                 return {
                                     name: document.getElementById('swal-name').value, cat: document.getElementById('swal-cat').value,
@@ -147,17 +210,11 @@
                                 });
                                 Swal.fire('등록 완료', '실적이 저장되었으며 다음 예정일이 자동 생성되었습니다.', 'success').then(()=>location.reload());
                             } else {
-                                // 💡 미래 일정을 등록할 때 안심할 수 있도록 안내창 추가!
-                                Swal.fire({
-                                    title: '예정 일정 등록됨', 
-                                    text: '일단 예정일만 생성했습니다. 이 일정을 나중에 [✅ 완료 처리] 하시면 그 날짜를 기준으로 다음 주기가 완벽하게 뻗어나갑니다!', 
-                                    icon: 'info'
-                                }).then(()=>location.reload());
+                                Swal.fire({title: '예정 일정 등록됨', text: '예정일이 생성되었습니다. 추후 [✅ 완료 처리] 시 다음 주기가 시작됩니다.', icon: 'info'}).then(()=>location.reload());
                             }
                         }
                     },
 
-                    // 마우스 드래그 날짜 변경
                     eventDrop: async function(info) {
                         const newDate = info.event.startStr.split('T')[0];
                         const result = await Swal.fire({ title: '일정 변경', text: `${newDate}로 일정을 이동하시겠습니까?`, icon: 'question', showCancelButton: true });
@@ -165,7 +222,6 @@
                         else { info.revert(); }
                     },
 
-                    // 일정 클릭 시 팝업 제어
                     eventClick: async function(info) {
                         const p = info.event.extendedProps;
                         const isDone = info.event.title.includes('완료');
@@ -175,39 +231,37 @@
                             showDenyButton: true, showCancelButton: true,
                             confirmButtonColor: '#28a745', denyButtonColor: '#007bff', cancelButtonColor: '#dc3545',
                             confirmButtonText: isDone ? '확인 (닫기)' : '✅ 완료 처리',
-                            denyButtonText: '✏️ 일정 수정', cancelButtonText: '🗑️ 영구 삭제'
+                            denyButtonText: '✏️ 일정 수정', cancelButtonText: '🗑️ 삭제'
                         });
 
-                        // [완료 처리]
                         if (action.isConfirmed && !isDone) {
                             const { value: actualDate } = await Swal.fire({ title: '실제 점검 완료일', input: 'date', inputValue: new Date().toISOString().split('T')[0] });
                             if (actualDate) {
                                 await deleteDoc(doc(db, "tasks", info.event.id));
                                 await setDoc(doc(db, "tasks", `done_${p.rawName}_${actualDate}`), { 
-                                    title: `✅ [완료] ${p.rawName} (${p.manager})`, date: actualDate, color: '#a0a0a0', cycle: p.cycle, rawName: p.rawName, manager: p.manager, category: p.category 
+                                    title: `✅ [완료] ${p.rawName} (${currentUser})`, // 💡 누가 완료했는지 자동 기록!
+                                    date: actualDate, color: '#a0a0a0', cycle: p.cycle, rawName: p.rawName, manager: currentUser, category: p.category 
                                 });
                                 
-                                // 🌟 안전장치가 적용된 주기 계산
                                 if(p.cycle > 0) {
                                     const nextStr = calcNextDate(actualDate, p.cycle);
                                     const catInfo = CAT_CONFIG[p.category];
                                     await setDoc(doc(db, "tasks", `todo_${p.rawName}_${nextStr}`), { 
-                                        title: `${catInfo.icon} [예정] ${p.rawName} (${p.manager})`, date: nextStr, color: catInfo.color, cycle: p.cycle, rawName: p.rawName, manager: p.manager, category: p.category 
+                                        title: `${catInfo.icon} [예정] ${p.rawName} (${currentUser})`, date: nextStr, color: catInfo.color, cycle: p.cycle, rawName: p.rawName, manager: currentUser, category: p.category 
                                     });
                                 }
                                 Swal.fire('완료되었습니다!', '다음 주기가 자동으로 생성되었습니다.', 'success').then(() => location.reload());
                             }
                         } 
-                        // [일정 수정]
                         else if (action.isDenied) {
                             const { value: editValues } = await Swal.fire({
                                 title: '일정 수정',
                                 html:
                                     `<input id="swal-e-name" class="swal2-input" value="${p.rawName}">` +
                                     `<select id="swal-e-cat" class="swal2-select">
-                                        <option value="법정" ${p.category==='법정'?'selected':''}>🚨 법정/필수점검 (빨강)</option>
-                                        <option value="보수" ${p.category==='보수'?'selected':''}>🛠️ 시설보수/수리 (주황)</option>
-                                        <option value="일반" ${p.category==='일반'?'selected':''}>📋 일반/임시점검 (파랑)</option>
+                                        <option value="법정" ${p.category==='법정'?'selected':''}>🚨 법정/필수점검</option>
+                                        <option value="보수" ${p.category==='보수'?'selected':''}>🛠️ 시설보수/수리</option>
+                                        <option value="일반" ${p.category==='일반'?'selected':''}>📋 일반/임시점검</option>
                                     </select>` +
                                     `<input id="swal-e-date" type="date" class="swal2-input" value="${info.event.startStr.split('T')[0]}">` +
                                     `<input id="swal-e-cycle" type="number" min="0" class="swal2-input" value="${p.cycle}">` +
@@ -236,9 +290,8 @@
                                 location.reload();
                             }
                         }
-                        // [영구 삭제]
                         else if (action.dismiss === Swal.DismissReason.cancel) {
-                            const delConfirm = await Swal.fire({ title: '정말 삭제하시겠습니까?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' });
+                            const delConfirm = await Swal.fire({ title: '삭제하시겠습니까?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' });
                             if(delConfirm.isConfirmed) { await deleteDoc(doc(db, "tasks", info.event.id)); location.reload(); }
                         }
                     }
@@ -264,7 +317,7 @@
                             const cols = rows[i].split(',');
                             if (cols.length < 3 || !cols[0].trim()) continue;
                             const taskName = cols[0].trim(); const dateStr = cols[2].trim(); 
-                            const cycle = parseInt(cols[3]) || 0; const manager = cols[4] ? cols[4].trim() : '황박사';
+                            const cycle = parseInt(cols[3]) || 0; const manager = cols[4] ? cols[4].trim() : currentUser; // 💡 업로드할 때도 담당자 자동 배정
                             const category = cols[1] ? cols[1].trim() : '법정';
                             
                             const isPast = new Date(dateStr) < new Date();
