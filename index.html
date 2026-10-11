@@ -94,8 +94,10 @@
                     // 파이어베이스 settings/auth 문서에 등록된 비밀번호를 가져와 대조
                     const authDoc = await getDoc(doc(db, "settings", "auth"));
                     
-                    if (authDoc.exists() && inputPw === authDoc.data().password) {
-                        sessionStorage.setItem("isLoggedIn", "true");
+                   
+                        sessionStorage.setItem("isLoggedIn", "true");// ✅ 자동 확장 방식 (auth 문서 안의 모든 비밀번호 중 하나라도 맞으면 통과)
+const validPasswords = authDoc.exists() ? Object.values(authDoc.data()) : [];
+if (validPasswords.includes(inputPw)) {
                         Swal.fire({ title: '로그인 성공', icon: 'success', timer: 1000, showConfirmButton: false });
                         
                         document.getElementById('app-container').style.display = 'block';
