@@ -44,7 +44,6 @@
 
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js'></script>
     <script type="module">
-        // 1. 파이어베이스 및 파이어스토어 도구 (getDoc 추가 완료)
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
         import { getFirestore, collection, getDocs, doc, getDoc, setDoc, deleteDoc, updateDoc } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore.js";
         
@@ -63,8 +62,8 @@
         let currentUser = "황박사"; 
         let isCalendarLoaded = false;
 
-        // 🚀 화면 시작 시 세션(로그인 상태) 확인
-        window.onload = async () => {
+        // 🚀 수정된 부분: 브라우저 타이밍과 상관없이 무조건 즉시 시동을 거는 엔진
+        async function startDashboard() {
             if (sessionStorage.getItem("isLoggedIn") === "true") {
                 document.getElementById('app-container').style.display = 'block';
                 if (!isCalendarLoaded) {
@@ -74,7 +73,9 @@
             } else {
                 showLoginPopup();
             }
-        };
+        }
+        // 망설이지 말고 스크립트를 읽자마자 팝업창 즉시 실행!
+        startDashboard(); 
 
         // 🔒 파이어베이스 백엔드 실시간 암호 대조 팝업
         async function showLoginPopup() {
@@ -217,3 +218,106 @@
                             confirmButtonText: isDone ? '확인 (닫기)' : '✅ 완료 처리',
                             denyButtonText: '✏️ 일정 수정', cancelButtonText: '🗑️ 영구 삭제'
                         });
+
+                        if (action.isConfirmed && !isDone) {
+                            const { value: actualDate } = await Swal.fire({ title: '실제 점검 완료일', input: 'date', inputValue: new Date().toISOString().split('T')[0] });
+                            if (actualDate) {
+                                await deleteDoc(doc(db, "tasks", info.event.id));
+                                await setDoc(doc(db, "tasks", `done_${p.rawName}_${actualDate}`), { 
+                                    title: `✅ [완료] ${p.rawName} (${currentUser})`, date: actualDate, color: '#a0a0a0', cycle: p.cycle, rawName: p.rawName, manager: currentUser, category: p.category 
+                                });
+                                
+                                if(p.cycle > 0) {
+                                    const nextStr = calcNextDate(actualDate, p.cycle);
+                                    const catInfo = CAT_CONFIG[p.category];
+                                    await setDoc(doc(db, "tasks", `todo_${p.rawName}_${nextStr}`), { 
+                                        title: `${catInfo.icon} [예정] ${p.rawName} (${currentUser})`, date: nextStr, color: catInfo.color, cycle: p.cycle, rawName: p.rawName, manager: currentUser, category: p.category 
+                                    });
+                                }
+                                Swal.fire('완료되었습니다!', '', 'success').then(() => location.reload());
+                            }
+                        } 
+                        else if (action.isDenied) {
+                            const { value: editValues } = await Swal.fire({
+                                title: '일정 수정',
+                                html:
+                                    `<input id="swal-e-name" class="swal2-input" value="${p.rawName}">` +
+                                    `<select id="swal-e-cat" class="swal2-select">
+                                        <option value="법정" ${p.category==='법정'?'selected':''}>🚨 법정/필수점검</option>
+                                        <option value="보수" ${p.category==='보수'?'selected':''}>🛠️ 시설보수/수리</option>
+                                        <option value="일반" ${p.category==='일반'?'selected':''}>📋 일반/임시점검</option>
+                                    </select>` +
+                                    `<input id="swal-e-date" type="date" class="swal2-input" value="${info.event.startStr.split('T')[0]}">` +
+                                    `<input id="swal-e-cycle" type="number" min="0" class="swal2-input" value="${p.cycle}">` +
+                                    `<input id="swal-e-manager" class="swal2-input" value="${p.manager}">`,
+                                focusConfirm: false, showCancelButton: true, confirmButtonText: '저장',
+                                preConfirm: () => {
+                                    return { name: document.getElementById('swal-e-name').value, cat: document.getElementById('swal-e-cat').value, date: document.getElementById('swal-e-date').value, cycle: document.getElementById('swal-e-cycle').value, manager: document.getElementById('swal-e-manager').value }
+                                }
+                            });
+
+                            if (editValues) {
+                                await deleteDoc(doc(db, "tasks", info.event.id)); 
+                                const catInfo = CAT_CONFIG[editValues.cat];
+                                const finalColor = isDone ? "#a0a0a0" : catInfo.color;
+                                const finalIcon = isDone ? "✅ [완료]" : `${catInfo.icon} [예정]`;
+                                const prefix = isDone ? "done" : "todo";
+
+                                await setDoc(doc(db, "tasks", `${prefix}_${editValues.name}_${editValues.date}`), {
+                                    title: `${finalIcon} ${editValues.name} (${editValues.manager})`, date: editValues.date, color: finalColor, cycle: parseInt(editValues.cycle), rawName: editValues.name, manager: editValues.manager, category: editValues.cat
+                                });
+                                location.reload();
+                            }
+                        }
+                        else if (action.dismiss === Swal.DismissReason.cancel) {
+                            const delConfirm = await Swal.fire({ title: '삭제하시겠습니까?', icon: 'warning', showCancelButton: true, confirmButtonColor: '#d33' });
+                            if(delConfirm.isConfirmed) { await deleteDoc(doc(db, "tasks", info.event.id)); location.reload(); }
+                        }
+                    }
+                });
+                calendar.render();
+
+                document.getElementById('downloadBtn').addEventListener('click', function() {
+                    let csv = "\uFEFF점검명,분류,날짜,주기(개월),담당자\n";
+                    eventsData.forEach(e => { csv += `${e.extendedProps.rawName},${e.extendedProps.category},${e.start},${e.extendedProps.cycle},${e.extendedProps.manager}\n`; });
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+                    link.download = "양지파인리조트_스마트일정.csv"; link.click();
+                });
+
+                document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('csvFileInput').click());
+                document.getElementById('csvFileInput').addEventListener('change', async function(e) {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async function(event) {
+                        const rows = event.target.result.split('\n');
+                        for (let i = 1; i < rows.length; i++) {
+                            const cols = rows[i].split(',');
+                            if (cols.length < 3 || !cols[0].trim()) continue;
+                            const taskName = cols[0].trim(); const dateStr = cols[2].trim(); 
+                            const cycle = parseInt(cols[3]) || 0; const manager = cols[4] ? cols[4].trim() : currentUser; 
+                            const category = cols[1] ? cols[1].trim() : '법정';
+                            
+                            const isPast = new Date(dateStr) < new Date();
+                            const catInfo = CAT_CONFIG[category] || CAT_CONFIG['법정'];
+                            
+                            await setDoc(doc(db, "tasks", `${isPast ? 'done' : 'todo'}_${taskName}_${dateStr}`), {
+                                title: isPast ? `✅ [완료] ${taskName} (${manager})` : `${catInfo.icon} [예정] ${taskName} (${manager})`, date: dateStr, color: isPast ? "#a0a0a0" : catInfo.color, cycle: cycle, rawName: taskName, manager: manager, category: category
+                            });
+                            
+                            if (isPast && cycle > 0) {
+                                const nStr = calcNextDate(dateStr, cycle);
+                                await setDoc(doc(db, "tasks", `todo_${taskName}_${nStr}`), { title: `${catInfo.icon} [예정] ${taskName} (${manager})`, date: nStr, color: catInfo.color, cycle: cycle, rawName: taskName, manager: manager, category: category });
+                            }
+                        }
+                        alert("대량 업로드가 완료되었습니다!");
+                        location.reload();
+                    };
+                    reader.readAsText(file, 'utf-8');
+                });
+            } catch (error) { console.error(error); alert("데이터 로딩 에러"); }
+        }
+    </script>
+</body>
+</html>
